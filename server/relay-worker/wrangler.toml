@@ -1,0 +1,14 @@
+name = "mobile-smarty-relay"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# Ein Raum = eine Durable-Object-Instanz, benannt nach dem Lobby-Code.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# SQLite-gestuetzte Durable Objects — das ist die Variante, die im
+# Cloudflare-Gratis-Tier laeuft.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

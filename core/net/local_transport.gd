@@ -54,6 +54,14 @@ func start() -> void:
 	poll()
 
 
+## Löst die Verbindung zum Server. Wichtig gegen Speicherlecks: Server und
+## Transport halten sich über das event-Signal gegenseitig (RefCounted-Zyklus)
+## und würden sonst nach jeder Partie im Speicher bleiben.
+func close() -> void:
+	if server != null and server.event.is_connected(_relay):
+		server.event.disconnect(_relay)
+
+
 func _relay(evt: Dictionary) -> void:
 	event_received.emit(evt)
 

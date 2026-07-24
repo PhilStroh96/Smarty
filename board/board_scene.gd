@@ -29,6 +29,13 @@ func _ready() -> void:
 	_client.begin()
 
 
+func _exit_tree() -> void:
+	# Den Server-Transport-Zyklus lösen, sonst bleibt eine ganze Partie
+	# (Server, Transport, Client) nach dem Verlassen im Speicher.
+	if _transport != null:
+		_transport.close()
+
+
 func _setup_players() -> void:
 	var names := ["Du", "Bot Anna", "Bot Ben", "Bot Cem"]
 	var player_defs: Array = []

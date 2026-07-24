@@ -135,6 +135,24 @@ godot --headless --path . res://tests/board_match_test.tscn
 godot --headless --path . res://tests/minigames_test.tscn
 ```
 
+Netcode und Relay (host-autoritatives Online-Spiel, headless über Loopback):
+
+```bash
+godot --headless --path . res://tests/lobby_test.tscn
+```
+
+```bash
+godot --headless --path . res://tests/client_flow_test.tscn
+```
+
+```bash
+godot --headless --path . res://tests/relay_fidelity_test.tscn
+```
+
+```bash
+godot --headless --path . res://tests/relay_client_test.tscn
+```
+
 Beide liefern Exit-Code 0 bei Erfolg. Der Partietest spielt drei komplette
 Partien ohne Grafik durch und prüft unter anderem, dass zwei Läufe mit
 demselben Seed Zug für Zug identisch verlaufen.

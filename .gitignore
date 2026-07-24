@@ -16,6 +16,10 @@ export_presets.cfg
 # Godot-Editor-Kram
 *.tmp
 
+# Node (Relay-Worker)
+node_modules/
+.wrangler/
+
 # Windows / macOS
 Thumbs.db
 desktop.ini

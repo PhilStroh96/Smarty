@@ -32,7 +32,7 @@ Eigenschaft, die der Determinismus-Test und der Netcode-Partietest absichern.
    ┌───────────────────┴─────────────────────────┐
    │  NetTransport (abstrakt)                     │   die Naht
    │   ├─ LocalTransport   (im selben Prozess)    │
-   │   └─ NakamaTransport  (noch zu bauen)        │
+   │   └─ RelayTransport   (Gast, übers Relay)    │
    └───────────────────┬─────────────────────────┘
                        │
    ┌───────────────────┴─────────────────────────┐
@@ -95,29 +95,53 @@ und die Partie läuft für alle anderen weiter. Dasselbe bei Minispiel-Abgaben.
 | `client_flow_test` | Der animierte Client spielt eine Partie bis zum Ende ab |
 | `lobby_test` | Beitreten, Kapazität, Bereit-Status, Host-Migration, Codes |
 
-## Offene Entscheidungen
+## Der Gratis-Weg: host-autoritativ + Relay
 
-Bevor der echte Online-Betrieb gebaut werden kann, braucht es von dir:
+Statt einen bezahlten Spielserver zu betreiben, läuft der `MatchServer` auf
+dem Gerät des **Hosts** — genau der Code, der schon offline läuft. Die Cloud
+ist nur ein dummer Weiterleiter:
 
-1. **Nakama-Hosting.** Empfehlung aus dem Plan: erst Heroic Cloud (managed,
-   ~50–200 €/Monat), später self-hosted. Das bestimmt, wie der
-   `NakamaTransport` sich verbindet.
-2. **Package-Name final.** Nach dem ersten Store-Upload unveränderlich —
-   hängt am endgültigen Spielnamen (siehe [android-export.md](android-export.md)).
-3. **Server-seitige Wertung.** Aktuell rechnet der Server die Minispiel-
-   Punkte in GDScript nach. Auf einem Godot-Dedicated-Server läuft das
-   unverändert. Bei Nakama-mit-Go müsste die Wertungslogik nach Go portiert
-   werden — oder ein Godot-Headless-Prozess dient als Match-Handler. Diese
-   Weiche gehört vor den Nakama-Bau geklärt.
+```
+   Gast-Handy          Cloudflare-Worker         Host-Handy
+   MatchClient  ──cmd──▶   Relay (Raum)   ──cmd──▶  MatchServer
+   RelayTransport ◀─evt──   (dumm)         ◀─evt──  RelayHostBridge
+```
 
-## Was der Nakama-Schritt konkret umfasst
+- **`RelayHostBridge`** (Host): Server-Events → alle Gäste; Gast-Commands →
+  Server, mit vom Relay **authentifiziertem** Absender (kein Gast kann im
+  Namen eines anderen handeln — das M3-Anti-Cheat gilt auch über Netz).
+- **`RelayTransport`** (Gast): schickt Commands, empfängt Events. Für den
+  `MatchClient` nicht von `LocalTransport` unterscheidbar.
+- **`LoopbackHub`**: der Relay im selben Prozess, für Tests. Bildet die
+  Weiterleitung exakt nach — headless getestet in `relay_fidelity_test`.
+- **`WebSocketEndpoint`** + **`server/relay-worker/`**: der echte Weg über
+  einen Cloudflare Durable Object. Kostenlos (Free-Tier, Hibernation).
+  Deploy: [server/relay-worker/README.md](../server/relay-worker/README.md).
 
-- `NakamaTransport extends NetTransport` — Verbindung, Auth (Device-ID),
-  Command senden, Events empfangen.
-- Server-seitiger Match-Handler, der `MatchServer` antreibt (Godot-Dedicated)
-  oder dessen Logik spiegelt (Go).
-- Lobby über Nakama-Matchmaking statt der lokalen `Lobby`-Klasse — die
-  Zustandslogik bleibt, der Transport wechselt.
-- Reconnect-Fenster, Presence, Host-Migration während der Partie.
-- Deep-Links zum Teilen des Lobby-Codes (WhatsApp — der wichtigste
-  Verbreitungskanal für ein Party-Game).
+**Warum das kostenlos geht:** Der Worker versteht das Spiel nicht und hält
+keinen Zustand über die Partie hinaus — er leitet nur weiter und schläft
+zwischen Nachrichten. Kein Server, den man bezahlt oder administriert.
+
+**Trade-off:** Der Host ist die Autorität — er *könnte* schummeln. Unter
+Freunden ist das der Normalfall (so arbeiten Konsolen-Partygames auch), und
+Gäste können weiterhin nicht schummeln. Für einen breiten Release wäre ein
+echter, neutraler Server nötig.
+
+## Offen für echten Online-Betrieb
+
+1. **Cloudflare-Worker deployen** — braucht deinen (kostenlosen) Cloudflare-
+   Account. Danach die Worker-URL in die Godot-Seite eintragen.
+2. **Online-Lobby-UI** — Bildschirm zum Erstellen/Beitreten per Code, den
+   Host-Start, die Charakterwahl. Die Logik (`Lobby`, `RelayTransport`)
+   steht; es fehlt die Oberfläche und die Verdrahtung einer Online-Brett-
+   szene (der Gast baut seinen `GameState` aus Presence + `MATCH_STARTED`).
+3. **Host-Migration** während der Partie — aktuell endet die Runde, wenn der
+   Host geht.
+4. **Package-Name final** vor dem ersten Store-Upload (siehe
+   [android-export.md](android-export.md)).
+5. **Deep-Links** zum Teilen des Codes per WhatsApp — der wichtigste
+   Verbreitungskanal für ein Party-Game.
+
+Ein neutraler, bezahlter Server (Nakama o. ä.) bleibt der Weg für einen
+breiten Release — dann als weitere `NetTransport`-Implementierung, ohne den
+Rest anzufassen.
