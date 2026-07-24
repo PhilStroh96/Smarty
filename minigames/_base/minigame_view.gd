@@ -91,12 +91,16 @@ func _build() -> void:
 	task_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(task_box)
 
-	var task_center := CenterContainer.new()
-	task_box.add_child(task_center)
-
+	# Das Label füllt die ganze Breite und zentriert seinen Text. NICHT in
+	# einem CenterContainer: der schrumpft ein autowrap-Label auf seine
+	# Minimalbreite (fast null), worauf der Text zeichenweise senkrecht
+	# umbricht — auf schmaleren Geräten sofort sichtbar. So bleibt "41 − 19"
+	# eine Zeile und die Aufgabenfläche bläht sich nicht auf.
 	_prompt_label = _label("", 88, Color.WHITE)
 	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	task_center.add_child(_prompt_label)
+	_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	task_box.add_child(_prompt_label)
 
 	_task_canvas = Control.new()
 	_task_canvas.custom_minimum_size = Vector2(600, 300)
@@ -117,7 +121,10 @@ func _label(text: String, size: int, color: Color) -> Label:
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Standardmäßig KEIN Umbruch: kurze Labels (Punktestand) würden in engen
+	# Containern sonst zeichenweise senkrecht umbrechen. Wer Umbruch braucht,
+	# schaltet ihn gezielt ein (siehe Aufgaben-Label).
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	return l
 
 
