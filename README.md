@@ -84,14 +84,42 @@ tests/        GUT-Tests, v. a. Determinismus
 
 ## Ein neues Minispiel anlegen
 
-1. Ordner unter `minigames/<kategorie>/<name>/`
-2. Szene mit einem Root-Node, der von `MinigameBase` erbt
-3. `_build()` implementieren — deterministisch, nur über `rng`
-4. Bei Antworten `submit(answer, is_correct)` aufrufen
-5. `id`, `category`, `duration_sec` und `tutorial_text` im Inspektor setzen
+Vorlage: `minigames/rechnen/zielzahl/zielzahl.gd`
 
-Der Rest — Timer, Punktevergabe, Ergebnismeldung, Netzwerkübertragung —
-kommt aus `MinigameBase`.
+1. Ordner unter `minigames/<kategorie>/<name>/`, darin `<name>.gd` und
+   `<name>.tscn` (Root-Node vom Typ `Node`)
+2. `extends QuizMinigame`, in `_init()` `id`, `category`, `duration_sec`
+   und `tutorial_text` setzen
+3. `_make_task(index, task_rng)` implementieren — die einzige Pflichtmethode
+4. In `MinigameRegistry.ENTRIES` eintragen. Erst dann taucht das Spiel in
+   einer Partie auf; ein halbfertiges Spiel im Ordner bleibt außen vor.
+
+Timer, Punktevergabe, Darstellung, Ergebnismeldung und die spätere
+Netzwerkübertragung kommen aus dem Framework.
+
+**Grafische Spiele**: `is_graphical()` auf `true`, `draw_task()` und
+`draw_option()` implementieren. Alle Zeichendaten gehören in
+`task.draw_data` und müssen in `_make_task` deterministisch entstehen —
+in den Zeichenmethoden darf nicht gewürfelt werden, sonst sieht jeder
+Frame anders aus.
+
+**Merkaufgaben**: `task.study_seconds` setzen. Die Ansicht zeigt dann
+zuerst `study_prompt`, blendet aus und gibt erst danach die Antworten
+frei. `in_study_phase` sagt der Zeichenmethode, welche Phase läuft.
+
+### Woran ein Minispiel gemessen wird
+
+`tests/minigames_test.tscn` prüft jedes Spiel der Registry automatisch.
+Über die technischen Prüfungen hinaus gelten drei Designregeln, die
+teurer sind als sie klingen:
+
+- **Falsche Antworten müssen plausibel sein.** Wer die falschen ohne
+  Nachdenken ausschließen kann, spielt Mustererkennung statt der
+  Fähigkeit, die das Spiel messen soll.
+- **Keine Antwort darf schon in der Aufgabe stehen.** Ein Ablenker, der
+  sichtbar Teil der Frage ist, ist ein geschenkter Ausschluss.
+- **Die Lösung darf keine Vorzugsposition haben.** Steht sie sortiert
+  immer an zweiter Stelle, gewinnt man ohne die Aufgabe zu lesen.
 
 ## Tests
 
@@ -103,6 +131,10 @@ godot --headless --path . --script res://tests/determinism_test.gd
 godot --headless --path . res://tests/board_match_test.tscn
 ```
 
+```bash
+godot --headless --path . res://tests/minigames_test.tscn
+```
+
 Beide liefern Exit-Code 0 bei Erfolg. Der Partietest spielt drei komplette
 Partien ohne Grafik durch und prüft unter anderem, dass zwei Läufe mit
 demselben Seed Zug für Zug identisch verlaufen.
@@ -110,12 +142,21 @@ demselben Seed Zug für Zug identisch verlaufen.
 Der Partietest läuft als **Szene**, nicht über `--script`: Im Script-Modus
 startet Godot ohne Autoloads, `GameState` wäre dann nicht vorhanden.
 
-Visuelle Kontrolle des Bretts ohne Editor (braucht eine Desktop-Sitzung,
+Visuelle Kontrolle ohne Editor (braucht eine Desktop-Sitzung,
 `--headless` rendert nichts):
 
 ```bash
 godot --path . --resolution 1920x1080 res://tools/screenshot_board.tscn
 ```
+
+```bash
+godot --path . --resolution 1920x1080 res://tools/screenshot_minigames.tscn
+```
+
+Logiktests prüfen, ob Aufgaben eindeutig und deterministisch sind. Ob man
+sie auch *lesen* kann — Kontrast, Größen, Überlappungen, abgeschnittene
+Formen — sieht man nur im Bild. Die Screenshots landen unter
+`%APPDATA%\Godot\app_userdata\Mobile Smarty\shots`.
 
 Platzhalter-Grafiken neu erzeugen:
 

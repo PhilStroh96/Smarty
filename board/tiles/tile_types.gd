@@ -42,16 +42,15 @@ const EFFECTS := {
 
 ## Was ein Stern kostet, wenn man auf einem STERN-Feld landet.
 ##
-## [b]Vorläufiger M1-Wert.[/b] Die Hauptquelle für Münzen sind Minispiele,
-## und die gibt es erst ab M2. Ohne sie bleiben pro Ringumlauf netto rund
-## 10 Münzen übrig (4x Bonus, 4x Falle, einmal über Start) — bei 12 Runden
-## schafft damit niemand die klassischen 20, und es fällt in einer ganzen
-## Partie kein einziger Stern. Ein Brettspiel ohne erreichbares Ziel kann
-## man nicht testspielen, deshalb hier vorerst 10.
+## Seit M2 tragen die Minispiele den Großteil der Münzen bei: im Schnitt
+## fünf pro Spieler und Runde, über zwölf Runden also rund sechzig, plus
+## rund fünfzehn vom Brett. Damit sind die klassischen 20 pro Stern wieder
+## angemessen — in M1 stand der Wert übergangsweise auf 10, weil ohne
+## Minispiele in einer ganzen Partie kein einziger Stern gefallen wäre.
 ##
-## Mit den ersten Minispielen muss dieser Wert zusammen mit der
-## Münzausschüttung neu justiert werden (PLAN.md M5, Balancing).
-const STAR_PRICE := 10
+## Bei weiteren Änderungen an der Münzausschüttung gegenprüfen: Der
+## Partietest verlangt, dass am Ende mindestens zwei Spieler Sterne haben.
+const STAR_PRICE := 20
 
 const NAMES := {
 	Type.NORMAL: "Normal",

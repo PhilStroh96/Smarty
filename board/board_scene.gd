@@ -15,6 +15,7 @@ var _board: BoardMap
 var _hud: BoardHud
 var _camera: BoardCamera
 var _turns: TurnManager
+var _minigame_layer: CanvasLayer
 var _pawns: Array[Pawn] = []
 
 
@@ -71,9 +72,16 @@ func _build_world() -> void:
 	_hud = BoardHud.new()
 	add_child(_hud)
 
+	# Eigene Ebene über dem Brett: Das Minispiel legt sich formatfüllend
+	# darüber und darf das Brett-HUD nicht durchscheinen lassen.
+	_minigame_layer = CanvasLayer.new()
+	_minigame_layer.layer = 20
+	add_child(_minigame_layer)
+
 	_turns = TurnManager.new()
 	add_child(_turns)
 	_turns.setup(_board, _pawns)
+	_turns.minigame_runner = _run_minigame
 
 
 func _connect_signals() -> void:
@@ -83,4 +91,24 @@ func _connect_signals() -> void:
 	_turns.dice_rolled.connect(func(_i: int, value: int) -> void: _hud.set_dice(value))
 	_turns.field_resolved.connect(func(_i: int, msg: String) -> void: _hud.set_message(msg))
 	_turns.round_started.connect(func(_r: int) -> void: _hud.refresh())
+	_turns.minigame_finished.connect(func(_e: Dictionary, _s: Array, rewards: Array) -> void:
+		_hud.show_minigame_result(rewards)
+	)
 	_turns.match_finished.connect(_hud.show_result)
+
+
+## Spielt ein Minispiel für den menschlichen Spieler und liefert die Punkte.
+##
+## Wird als Callable an den [TurnManager] gehängt. Ohne sie würfelt der
+## Manager auch für den Menschen ein Ergebnis aus — genau so läuft der
+## Headless-Test.
+func _run_minigame(entry: Dictionary, seed: int) -> int:
+	var runner := MinigameRunner.new()
+	_minigame_layer.add_child(runner)
+	_hud.visible = false
+
+	var result: MinigameResult = await runner.run(entry, seed)
+
+	runner.queue_free()
+	_hud.visible = true
+	return result.score

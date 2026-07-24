@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://minigames/erkennen/farbwort/farbwort.gd" id="1_farbwort"]
+
+[node name="Farbwort" type="Node"]
+script = ExtResource("1_farbwort")

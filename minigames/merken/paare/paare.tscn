@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://minigames/merken/paare/paare.gd" id="1_paare"]
+
+[node name="Paare" type="Node"]
+script = ExtResource("1_paare")

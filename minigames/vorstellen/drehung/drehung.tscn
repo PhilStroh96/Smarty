@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://minigames/vorstellen/drehung/drehung.gd" id="1_drehung"]
+
+[node name="Drehung" type="Node"]
+script = ExtResource("1_drehung")

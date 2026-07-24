@@ -131,6 +131,16 @@ func set_message(text: String) -> void:
 	refresh()
 
 
+## Zeigt, wer im Minispiel wie viele Münzen bekommen hat.
+func show_minigame_result(rewards: Array) -> void:
+	var parts: Array[String] = []
+	for i in rewards.size():
+		if i < GameState.players.size():
+			parts.append("%s +%d" % [GameState.players[i].display_name, rewards[i]])
+	_message_label.text = "Minispiel: " + "   ".join(parts)
+	refresh()
+
+
 func show_result() -> void:
 	_roll_button.visible = false
 	_turn_label.text = ""

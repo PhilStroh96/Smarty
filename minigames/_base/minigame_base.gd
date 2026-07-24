@@ -121,6 +121,20 @@ func get_result() -> MinigameResult:
 	return _result
 
 
+## Läuft die Uhr gerade? Zwischen [method start] und [method finish] true.
+##
+## Jede Eingabeverarbeitung muss das prüfen — sonst zählen Antworten, die
+## nach dem Ablauf des Timers eintreffen, und die Server-Validierung
+## verwirft die Ergebnismeldung als unplausibel.
+func is_running() -> bool:
+	return _running
+
+
+## Verstrichene Spielzeit in Sekunden.
+func elapsed() -> float:
+	return _elapsed
+
+
 ## Verbleibende Zeit in Sekunden.
 func time_left() -> float:
 	return maxf(0.0, duration_sec - _elapsed)

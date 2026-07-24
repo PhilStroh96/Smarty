@@ -45,6 +45,16 @@ func _run() -> void:
 	_check("Feldpositionen immer im Ring", run_a["pos_ok"])
 	_check("Es wurden Sterne gekauft", run_a["stars_total"] > 0)
 	_check("Startfeld-Prämie wurde ausgezahlt", run_a["start_bonus_count"] > 0)
+	_check("Nach jeder Runde lief ein Minispiel", run_a["minigames"] == ROUNDS)
+	_check("Minispiele schütten Münzen aus", run_a["minigame_coins"] > 0)
+	_check("Bessere Punktzahl gibt nie weniger Münzen", run_a["reward_ok"])
+	_check("Kein Minispiel zweimal hintereinander", run_a["repeat_ok"])
+	_check("Mehrere verschiedene Minispiele gespielt (%d)" % run_a["distinct_minigames"],
+		run_a["distinct_minigames"] >= 3)
+
+	# Das eigentliche Ziel des Balancings: ein knappes Rennen. Wenn ein
+	# Spieler alles gewinnt oder niemand Sterne bekommt, stimmt etwas nicht.
+	_check("Mehr als ein Spieler hat Sterne", run_a["star_holders"] >= 2)
 
 	print("")
 	print("Endstand Lauf A (Seed %d):" % SEED_A)
@@ -92,7 +102,34 @@ func _play(seed: int) -> Dictionary:
 		"dice_ok": true,
 		"pos_ok": true,
 		"coins_ok": true,
+		"minigames": 0,
+		"minigame_coins": 0,
+		"reward_ok": true,
+		"repeat_ok": true,
 	}
+	var seen_minigames: Array[String] = []
+
+	turns.minigame_finished.connect(func(entry: Dictionary, scores: Array, rewards: Array) -> void:
+		stats["minigames"] += 1
+		trace.append("  mg %s" % entry["id"])
+
+		# Kein Spieler darf leer ausgehen und niemand mehr bekommen als
+		# der erste Platz hergibt.
+		for rw in rewards:
+			stats["minigame_coins"] += rw
+			if rw <= 0 or rw > TurnManager.MINIGAME_REWARDS[0]:
+				stats["reward_ok"] = false
+		# Wer mehr Punkte hat, darf nicht weniger Münzen bekommen.
+		for a in scores.size():
+			for b in scores.size():
+				if scores[a] > scores[b] and rewards[a] < rewards[b]:
+					stats["reward_ok"] = false
+
+		# Dasselbe Minispiel darf nicht direkt hintereinander kommen.
+		if not seen_minigames.is_empty() and seen_minigames[-1] == entry["id"]:
+			stats["repeat_ok"] = false
+		seen_minigames.append(entry["id"])
+	)
 
 	turns.dice_rolled.connect(func(i: int, v: int) -> void:
 		stats["turns"] += 1
@@ -116,11 +153,14 @@ func _play(seed: int) -> Dictionary:
 	await turns.run_match()
 
 	var stars_total := 0
+	var star_holders := 0
 	var standings: Array[String] = []
 	for p in GameState.standings():
 		stars_total += p.stars
-		standings.append("%s: %d Sterne, %d Münzen, Feld %d" % [
-			p.display_name, p.stars, p.coins, p.board_position
+		if p.stars > 0:
+			star_holders += 1
+		standings.append("%s: %d Sterne, %d Münzen, Feld %d, %d Minispiele gewonnen" % [
+			p.display_name, p.stars, p.coins, p.board_position, p.minigames_won
 		])
 
 	var result := {
@@ -131,7 +171,13 @@ func _play(seed: int) -> Dictionary:
 		"pos_ok": stats["pos_ok"],
 		"coins_ok": stats["coins_ok"],
 		"stars_total": stars_total,
+		"star_holders": star_holders,
 		"start_bonus_count": stats["start_bonus"],
+		"minigames": stats["minigames"],
+		"minigame_coins": stats["minigame_coins"],
+		"reward_ok": stats["reward_ok"],
+		"repeat_ok": stats["repeat_ok"],
+		"distinct_minigames": _distinct(seen_minigames),
 		"standings": standings,
 	}
 
@@ -139,6 +185,13 @@ func _play(seed: int) -> Dictionary:
 	turns.queue_free()
 	await get_tree().process_frame
 	return result
+
+
+func _distinct(list: Array) -> int:
+	var seen := {}
+	for v in list:
+		seen[v] = true
+	return seen.size()
 
 
 func _check(label: String, ok: bool) -> void:
