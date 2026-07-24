@@ -22,23 +22,6 @@ enum Mode {
 ## tödlich für Mobile-Sessions (PLAN.md §8.2).
 const MAX_PLAYERS := 4
 
-class PlayerInfo extends RefCounted:
-	var id: StringName
-	var display_name: String = ""
-	var character_id: StringName
-	var is_ai: bool = false
-	## Wird true, wenn die Verbindung abreißt und die KI übernimmt.
-	var taken_over_by_ai: bool = false
-	var coins: int = 0
-	var stars: int = 0
-	var board_position: int = 0
-	var minigames_won: int = 0
-
-	func _init(p_id: StringName = &"", p_name: String = "") -> void:
-		id = p_id
-		display_name = p_name
-
-
 var mode: Mode = Mode.LOCAL
 var players: Array[PlayerInfo] = []
 var current_round: int = 0

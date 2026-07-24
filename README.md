@@ -93,6 +93,36 @@ tests/        GUT-Tests, v. a. Determinismus
 Der Rest — Timer, Punktevergabe, Ergebnismeldung, Netzwerkübertragung —
 kommt aus `MinigameBase`.
 
+## Tests
+
+```bash
+godot --headless --path . --script res://tests/determinism_test.gd
+```
+
+```bash
+godot --headless --path . res://tests/board_match_test.tscn
+```
+
+Beide liefern Exit-Code 0 bei Erfolg. Der Partietest spielt drei komplette
+Partien ohne Grafik durch und prüft unter anderem, dass zwei Läufe mit
+demselben Seed Zug für Zug identisch verlaufen.
+
+Der Partietest läuft als **Szene**, nicht über `--script`: Im Script-Modus
+startet Godot ohne Autoloads, `GameState` wäre dann nicht vorhanden.
+
+Visuelle Kontrolle des Bretts ohne Editor (braucht eine Desktop-Sitzung,
+`--headless` rendert nichts):
+
+```bash
+godot --path . --resolution 1920x1080 res://tools/screenshot_board.tscn
+```
+
+Platzhalter-Grafiken neu erzeugen:
+
+```bash
+python tools/gen_placeholder_art.py
+```
+
 ## Determinismus prüfen
 
 Die Bootstrap-Szene führt bei jedem Start einen Selbsttest aus und zeigt
