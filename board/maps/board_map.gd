@@ -31,6 +31,11 @@ class Field extends RefCounted:
 
 var fields: Array[Field] = []
 
+## Die reine Spiellogik. [BoardMap] hält sie für die Grafik, delegiert die
+## Bewegungslogik aber hierher — dieselbe Implementierung, die der Server
+## headless benutzt (siehe [BoardData]).
+var data: BoardData
+
 var _tile_nodes: Array[Sprite2D] = []
 var _atlas_cache: Dictionary = {}
 
@@ -54,6 +59,7 @@ static func grid_to_world(grid: Vector2i) -> Vector2:
 ## Baut das Brett aus einer Feldliste auf.
 func build(field_defs: Array) -> void:
 	_clear()
+	data = BoardData.new(field_defs)
 	for i in field_defs.size():
 		var d: Dictionary = field_defs[i]
 		var f := Field.new(d["grid"], d["type"], i)
@@ -128,21 +134,12 @@ func field_position(index: int) -> Vector2:
 	return grid_to_world(f.grid)
 
 
-## Normalisiert einen Feldindex auf den Ring.
+## Normalisiert einen Feldindex auf den Ring. Delegiert an [BoardData].
 func wrap_index(index: int) -> int:
-	if fields.is_empty():
-		return 0
-	return wrapi(index, 0, fields.size())
+	return data.wrap_index(index) if data != null else 0
 
 
 ## Prüft, ob zwischen zwei Zügen das Startfeld überschritten wurde.
-##
-## Wichtig für die Startfeld-Prämie: Wer über Start hinweggeht, bekommt sie
-## auch dann, wenn er nicht exakt darauf landet.
+## Delegiert an [BoardData].
 func passed_start(from_index: int, steps: int) -> bool:
-	if fields.is_empty() or steps <= 0:
-		return false
-	for i in range(1, steps + 1):
-		if wrap_index(from_index + i) == 0:
-			return true
-	return false
+	return data.passed_start(from_index, steps) if data != null else false

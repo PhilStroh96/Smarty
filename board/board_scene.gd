@@ -10,11 +10,14 @@ extends Node2D
 const ROUNDS := 12
 const HUMAN_PLAYERS := 1
 const TOTAL_PLAYERS := 4
+const LOCAL_ID := &"p0"
 
 var _board: BoardMap
 var _hud: BoardHud
 var _camera: BoardCamera
-var _turns: TurnManager
+var _client: MatchClient
+var _server: MatchServer
+var _transport: LocalTransport
 var _minigame_layer: CanvasLayer
 var _pawns: Array[Pawn] = []
 
@@ -23,22 +26,38 @@ func _ready() -> void:
 	_setup_players()
 	_build_world()
 	_connect_signals()
-	_turns.run_match()
+	_client.begin()
 
 
 func _setup_players() -> void:
 	var names := ["Du", "Bot Anna", "Bot Ben", "Bot Cem"]
-	var players: Array[PlayerInfo] = []
+	var player_defs: Array = []
+	var mirror: Array[PlayerInfo] = []
 	for i in TOTAL_PLAYERS:
+		var is_ai := i >= HUMAN_PLAYERS
+		player_defs.append({
+			"id": "p%d" % i,
+			"name": names[i],
+			"char": "pawn%d" % i,
+			"ai": is_ai,
+		})
+		# Der Client-Spiegel: dieselben Spieler als eigene Objekte. Der
+		# Server bekommt seine eigene Kopie (in configure), damit Client
+		# und Server nie dieselben Instanzen teilen.
 		var p := PlayerInfo.new(StringName("p%d" % i), names[i])
-		p.is_ai = i >= HUMAN_PLAYERS
+		p.is_ai = is_ai
 		p.character_id = StringName("pawn%d" % i)
-		players.append(p)
+		mirror.append(p)
 
 	# Zufälliger Match-Seed. In der Online-Partie gibt ihn später der
 	# Server vor — hier reicht die Uhrzeit.
 	var seed := int(Time.get_unix_time_from_system())
-	GameState.start_match(GameState.Mode.LOCAL, players, seed, ROUNDS)
+	GameState.start_match(GameState.Mode.LOCAL, mirror, seed, ROUNDS)
+
+	# Der autoritative Server im selben Prozess (LocalTransport).
+	_server = MatchServer.new()
+	_server.configure(player_defs, seed, TestMap.build_fields(), ROUNDS)
+	_transport = LocalTransport.new(_server)
 
 
 func _build_world() -> void:
@@ -78,31 +97,31 @@ func _build_world() -> void:
 	_minigame_layer.layer = 20
 	add_child(_minigame_layer)
 
-	_turns = TurnManager.new()
-	add_child(_turns)
-	_turns.setup(_board, _pawns)
-	_turns.minigame_runner = _run_minigame
+	_client = MatchClient.new()
+	add_child(_client)
+	_client.setup(_transport, _board, _pawns, LOCAL_ID)
+	_client.minigame_runner = _run_minigame
 
 
 func _connect_signals() -> void:
-	_hud.roll_pressed.connect(_turns.request_roll)
+	_hud.roll_pressed.connect(_client.request_roll)
 
-	_turns.turn_started.connect(func(i: int) -> void: _hud.set_turn(i))
-	_turns.dice_rolled.connect(func(_i: int, value: int) -> void: _hud.set_dice(value))
-	_turns.field_resolved.connect(func(_i: int, msg: String) -> void: _hud.set_message(msg))
-	_turns.round_started.connect(func(_r: int) -> void: _hud.refresh())
-	_turns.minigame_finished.connect(func(_e: Dictionary, _s: Array, rewards: Array) -> void:
+	_client.turn_started.connect(func(i: int) -> void: _hud.set_turn(i))
+	_client.dice_rolled.connect(func(_i: int, value: int) -> void: _hud.set_dice(value))
+	_client.field_resolved.connect(func(_i: int, msg: String) -> void: _hud.set_message(msg))
+	_client.round_started.connect(func(_r: int) -> void: _hud.refresh())
+	_client.minigame_finished.connect(func(_e: Dictionary, _s: Array, rewards: Array) -> void:
 		_hud.show_minigame_result(rewards)
 	)
-	_turns.match_finished.connect(_hud.show_result)
+	_client.match_finished.connect(_hud.show_result)
 
 
-## Spielt ein Minispiel für den menschlichen Spieler und liefert die Punkte.
+## Spielt ein Minispiel für den lokalen Spieler und liefert das rohe Ergebnis.
 ##
-## Wird als Callable an den [TurnManager] gehängt. Ohne sie würfelt der
-## Manager auch für den Menschen ein Ergebnis aus — genau so läuft der
-## Headless-Test.
-func _run_minigame(entry: Dictionary, seed: int) -> int:
+## Der Client schickt daraus nur die Antworten an den Server — die Punkte
+## rechnet der Server selbst nach. Der Rückgabewert ist deshalb das ganze
+## [MinigameResult] (mit den Einzelantworten), nicht eine Punktzahl.
+func _run_minigame(entry: Dictionary, seed: int) -> MinigameResult:
 	var runner := MinigameRunner.new()
 	_minigame_layer.add_child(runner)
 	_hud.visible = false
@@ -111,4 +130,4 @@ func _run_minigame(entry: Dictionary, seed: int) -> int:
 
 	runner.queue_free()
 	_hud.visible = true
-	return result.score
+	return result

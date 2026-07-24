@@ -130,3 +130,27 @@ func draw_option(_canvas: Control, _task: MinigameTask, _option: int) -> void:
 ## True, wenn Aufgabe und Antworten gezeichnet statt beschriftet werden.
 func is_graphical() -> bool:
 	return false
+
+
+## Rechnet die Punktzahl aus rohen Antworten nach — die Wertung des Servers.
+##
+## Der Server vertraut der vom Client gemeldeten Punktzahl nicht (PLAN.md
+## §2.1). Er baut aus dem Seed dieselben Aufgaben ([method setup] muss
+## vorher gelaufen sein) und prüft jede Antwort selbst. Ein Client kann so
+## nur seine Antworten behaupten, niemals sein Ergebnis.
+##
+## [param submissions]: je Eintrag { "task": int, "answer": int, ... }.
+## Reihenfolge wie beim Spielen — die Punkte-Untergrenze bei 0 wirkt
+## kumulativ, deshalb muss die Reihenfolge zur Client-Wertung passen.
+func authoritative_score(submissions: Array) -> int:
+	var score := 0
+	for s in submissions:
+		var idx: int = s.get("task", -1)
+		if idx < 0 or idx >= tasks.size():
+			# Ungültiger Aufgabenindex: zählt nicht, statt zu crashen.
+			continue
+		var chosen: int = s.get("answer", -1)
+		var is_correct := tasks[idx].is_correct(chosen)
+		score += CORRECT_POINTS if is_correct else WRONG_POINTS
+		score = maxi(0, score)
+	return score

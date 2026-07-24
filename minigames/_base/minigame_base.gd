@@ -153,11 +153,16 @@ func submit(answer: int, is_correct: bool, task_index: int = -1) -> void:
 	_score_submission(is_correct)
 
 
-## Standard-Punkteformel: richtig gibt Punkte, falsch kostet weniger als
-## richtig einbringt — Raten soll sich nicht lohnen, aber auch nicht
-## bestrafend wirken. Überschreibbar, wenn ein Minispiel es braucht.
+## Punkte für eine richtige Antwort.
+const CORRECT_POINTS := 100
+## Abzug für eine falsche Antwort. Kleiner als der Gewinn: Raten soll sich
+## nicht lohnen, aber auch nicht bestrafend wirken.
+const WRONG_POINTS := -25
+
+
+## Standard-Punkteformel. Überschreibbar, wenn ein Minispiel es braucht.
 func _score_submission(is_correct: bool) -> void:
-	_result.score += 100 if is_correct else -25
+	_result.score += CORRECT_POINTS if is_correct else WRONG_POINTS
 	_result.score = maxi(0, _result.score)
 
 
