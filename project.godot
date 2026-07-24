@@ -1,0 +1,45 @@
+; Engine configuration file.
+; Siehe PLAN.md §2 für die Begründung der hier gesetzten Werte.
+
+config_version=5
+
+[application]
+
+config/name="Mobile Smarty"
+config/description="Party-Brettspiel mit Logik-Minispielen."
+run/main_scene="res://core/bootstrap.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Settings="*res://core/autoload/settings.gd"
+GameState="*res://core/autoload/game_state.gd"
+Audio="*res://core/autoload/audio.gd"
+
+[display]
+
+; Landscape: die isometrische Karte braucht die Breite (PLAN.md §8.1).
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=0
+
+[input_devices]
+
+; Damit Touch-Eingaben im Editor mit der Maus testbar sind.
+pointing/emulate_touch_from_mouse=true
+
+[rendering]
+
+; gl_compatibility statt "mobile": Das Spiel ist reines 2D — Vulkan bringt
+; hier nichts, kostet aber Gerätereichweite (Vulkan-Treiber auf älteren
+; Android-Geräten sind lückenhaft), Startzeit und RAM.
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+; Für den Android-Export zwingend. Schaltet nur den Import-Support frei —
+; einzelne Sprites können weiterhin auf "Lossless" stehen, was bei
+; Cartoon-Art mit harten Kanten meist besser aussieht als Blockkompression.
+textures/vram_compression/import_etc2_astc=true

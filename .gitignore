@@ -1,0 +1,27 @@
+# Godot 4
+.godot/
+/android/
+*.translation
+
+# Export-Artefakte
+/build/
+/export/
+
+# Enthält Keystore-Pfade und Passwörter — niemals einchecken.
+# Vorlage liegt in docs/export_presets.template.cfg
+export_presets.cfg
+*.keystore
+*.jks
+
+# Godot-Editor-Kram
+*.tmp
+
+# Windows / macOS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Quelldateien der Assets sind groß und werden separat gesichert.
+# Nur die exportierten Endformate landen unter assets/.
+/assets/source/**/*.psd
+/assets/source/**/*.blend1
