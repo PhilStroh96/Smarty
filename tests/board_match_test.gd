@@ -62,12 +62,23 @@ func _ready() -> void:
 	_check("Mehr als ein Spieler hat am Ende Sterne (%d)" % run_a["star_holders"],
 		run_a["star_holders"] >= 2)
 
+	# --- Wall-clock-Unabhängigkeit (relative Timeouts statt Deadlines) ---
+	var run_d := _run_ai_match_at(SEED_A, 1000000)
+	_check("Event-Strom unabhängig von der Startuhr",
+		run_a["stream"] == run_d["stream"])
+
 	# --- Menschlicher Spieler über den Transport ---
 	_test_human_flow()
 
 	# --- Serverseitige Validierung (Anti-Cheat) ---
 	_test_validation()
 	_test_authoritative_scoring()
+	_test_score_inflation()
+	_test_spoofed_sender()
+
+	# --- Zustandskanten ---
+	_test_leave_during_minigame()
+	_test_edge_cases()
 
 	print("")
 	print("Endstand Lauf A (Seed %d):" % SEED_A)
@@ -81,6 +92,12 @@ func _ready() -> void:
 
 ## Spielt eine reine KI-Partie durch (kein Mensch, alles vom Seed bestimmt).
 func _run_ai_match(seed: int) -> Dictionary:
+	return _run_ai_match_at(seed, NOW)
+
+
+## Wie [method _run_ai_match], aber mit steuerbarer Startuhr — für den
+## Nachweis, dass der Event-Strom nicht an der Wanduhr hängt.
+func _run_ai_match_at(seed: int, now: int) -> Dictionary:
 	var server := MatchServer.new()
 	var defs: Array = []
 	for i in PLAYERS:
@@ -91,7 +108,7 @@ func _run_ai_match(seed: int) -> Dictionary:
 	server.event.connect(_collect.bind(stats))
 
 	var transport := LocalTransport.new(server)
-	transport.now_override = NOW
+	transport.now_override = now
 	transport.start()
 
 	stats["ended"] = server.phase == MatchServer.Phase.ENDED
@@ -187,6 +204,120 @@ func _test_authoritative_scoring() -> void:
 	_check("Autoritative Wertung: richtige Antworten geben Punkte", score_right > 0)
 	_check("Autoritative Wertung: falsche Antworten geben weniger",
 		score_wrong < score_right)
+
+
+## Der kritische Anti-Cheat-Fall: dieselbe richtige Antwort tausendfach
+## gemeldet darf nicht tausendfach zählen.
+func _test_score_inflation() -> void:
+	var entry := MinigameRegistry.by_id(&"rechnen_zielzahl")
+	var scene: PackedScene = load(entry["scene"])
+	var game = scene.instantiate()
+	game.setup(999)
+	var correct0: int = game.tasks[0].correct
+
+	var spam: Array = []
+	for i in 1000:
+		spam.append({"task": 0, "answer": correct0, "time_ms": 150 + i})
+	var score: int = game.authoritative_score(spam)
+	game.free()
+
+	_check("Anti-Cheat: dieselbe Aufgabe zählt nur einmal (%d Punkte)" % score,
+		score == MinigameBase.CORRECT_POINTS)
+	_check("Anti-Cheat: in Millisekunden gestapelte Antworten abgelehnt",
+		not MatchServer.validate_submission(spam, 60000))
+
+
+## Ein Client darf nicht im Namen eines anderen Spielers handeln.
+func _test_spoofed_sender() -> void:
+	var server := MatchServer.new()
+	var defs: Array = [
+		{"id": "h1", "name": "H1", "char": "", "ai": false},
+		{"id": "h2", "name": "H2", "char": "", "ai": false},
+	]
+	server.configure(defs, SEED_A, TestMap.build_fields(), 3)
+	var transport := LocalTransport.new(server)
+	transport.now_override = NOW
+	transport.start()
+
+	# Beide würfeln, bis das erste Minispiel läuft.
+	var guard := 0
+	while server.phase != MatchServer.Phase.MINIGAME and guard < 200:
+		guard += 1
+		if server.phase == MatchServer.Phase.AWAIT_ROLL:
+			var cur := String(server.players[server.current_player].id)
+			server.command(MatchProtocol.roll(StringName(cur)), NOW, cur)
+		transport.poll()
+
+	var mg_id := StringName(server._mg_entry.get("id", ""))
+	# h1 schickt eine Abgabe, die vorgibt von h2 zu sein — echter Absender h1.
+	server.command(MatchProtocol.submit(&"h2", mg_id, [
+		{"task": 0, "answer": 0, "time_ms": 500}]), NOW, "h1")
+	_check("Anti-Cheat: gefälschte Abgabe zählt für den echten Absender, nicht das Opfer",
+		server._mg_have.get(0, false) and not server._mg_have.get(1, false))
+
+	# Das Opfer kann trotzdem noch selbst abgeben.
+	server.command(MatchProtocol.submit(&"h2", mg_id, [
+		{"task": 0, "answer": 0, "time_ms": 500}]), NOW, "h2")
+	_check("Anti-Cheat: Opfer kann trotz Spoofing abgeben",
+		server._mg_have.get(1, false))
+
+
+## Verlässt der letzte Mensch das Minispiel, muss sofort ausgewertet werden.
+func _test_leave_during_minigame() -> void:
+	var server := MatchServer.new()
+	var defs: Array = [
+		{"id": "human", "name": "H", "char": "", "ai": false},
+		{"id": "ai0", "name": "B", "char": "", "ai": true},
+	]
+	server.configure(defs, SEED_A, TestMap.build_fields(), 3)
+	var results := {"n": 0}
+	server.event.connect(func(e: Dictionary) -> void:
+		if MatchProtocol.type_of(e) == MatchProtocol.EV_MINIGAME_RESULT:
+			results["n"] += 1
+	)
+	var transport := LocalTransport.new(server)
+	transport.now_override = NOW
+	transport.start()
+
+	var guard := 0
+	while server.phase != MatchServer.Phase.MINIGAME and guard < 200:
+		guard += 1
+		if server.phase == MatchServer.Phase.AWAIT_ROLL and server.current_player == 0:
+			server.command(MatchProtocol.roll(&"human"), NOW, "human")
+		transport.poll()
+
+	var before: int = results["n"]
+	# Zeit NICHT vorspulen: der Abschluss darf nicht vom Timeout abhängen.
+	server.command(MatchProtocol.leave(&"human"), NOW, "human")
+	_check("Leave im Minispiel wertet sofort aus (kein Timeout-Hänger)",
+		results["n"] == before + 1)
+
+
+## Zustandskanten, die nicht crashen oder Streu-Events feuern dürfen.
+func _test_edge_cases() -> void:
+	# start() ohne Spieler darf nicht abstürzen.
+	var s := MatchServer.new()
+	s.configure([], SEED_A, TestMap.build_fields(), 3)
+	s.start(NOW)
+	_check("Leere Spielerliste: start crasht nicht", s.phase == MatchServer.Phase.LOBBY)
+
+	# Leave nach Spielende darf kein Event mehr feuern.
+	var s2 := MatchServer.new()
+	var defs: Array = []
+	for i in PLAYERS:
+		defs.append({"id": "p%d" % i, "name": "P", "char": "", "ai": true})
+	s2.configure(defs, SEED_A, TestMap.build_fields(), 2)
+	var left := {"n": 0}
+	s2.event.connect(func(e: Dictionary) -> void:
+		if MatchProtocol.type_of(e) == MatchProtocol.EV_PLAYER_LEFT:
+			left["n"] += 1
+	)
+	var t2 := LocalTransport.new(s2)
+	t2.now_override = NOW
+	t2.start()
+	var before: int = left["n"]
+	s2.command(MatchProtocol.leave(&"p0"), NOW, "p0")
+	_check("Leave nach Spielende feuert kein Streu-Event", left["n"] == before)
 
 
 # ---------------------------------------------------------------------------

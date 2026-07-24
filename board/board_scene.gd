@@ -58,6 +58,8 @@ func _setup_players() -> void:
 	_server = MatchServer.new()
 	_server.configure(player_defs, seed, TestMap.build_fields(), ROUNDS)
 	_transport = LocalTransport.new(_server)
+	# Alle Eingaben an diesem Gerät gelten als der lokale Spieler.
+	_transport.local_sender_id = String(LOCAL_ID)
 
 
 func _build_world() -> void:

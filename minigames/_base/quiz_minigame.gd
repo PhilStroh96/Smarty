@@ -144,11 +144,19 @@ func is_graphical() -> bool:
 ## kumulativ, deshalb muss die Reihenfolge zur Client-Wertung passen.
 func authoritative_score(submissions: Array) -> int:
 	var score := 0
+	var counted := {}
 	for s in submissions:
 		var idx: int = s.get("task", -1)
 		if idx < 0 or idx >= tasks.size():
 			# Ungültiger Aufgabenindex: zählt nicht, statt zu crashen.
 			continue
+		# Jede Aufgabe zählt nur einmal. Ohne diese Sperre könnte ein
+		# Client dieselbe richtig beantwortete Aufgabe tausendfach melden
+		# und beliebig viele Punkte erzeugen — die Wertung ist durch die
+		# Aufgabenzahl gedeckelt (PLAN.md §2.1, Anti-Cheat).
+		if counted.has(idx):
+			continue
+		counted[idx] = true
 		var chosen: int = s.get("answer", -1)
 		var is_correct := tasks[idx].is_correct(chosen)
 		score += CORRECT_POINTS if is_correct else WRONG_POINTS

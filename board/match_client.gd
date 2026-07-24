@@ -46,6 +46,9 @@ var minigame_runner: Callable
 var _queue: Array[Dictionary] = []
 var _roll_requested: bool = false
 var _running: bool = false
+## Wird true, sobald der Server den lokalen Spieler übernimmt (Timeout).
+## Bricht den Wurf-Warteloop, damit die Wiedergabe nicht einfriert.
+var _local_taken_over: bool = false
 
 
 func setup(p_transport: NetTransport, p_board: BoardMap, p_pawns: Array[Pawn],
@@ -84,6 +87,13 @@ func _process(_delta: float) -> void:
 
 
 func _on_event(evt: Dictionary) -> void:
+	# Eine Übernahme des lokalen Spielers sofort erkennen (Peek), nicht erst
+	# bei der Wiedergabe: Solange der Client im Wurf-Warteloop hängt, wird
+	# die Queue nicht abgearbeitet — das Flag muss also schon beim Eingang
+	# gesetzt werden, damit der Loop abbrechen kann.
+	if MatchProtocol.type_of(evt) == MatchProtocol.EV_PLAYER_LEFT \
+			and evt.get("id", "") == String(local_player_id):
+		_local_taken_over = true
 	_queue.append(evt)
 
 
@@ -144,9 +154,13 @@ func _handle_turn(evt: Dictionary) -> void:
 	# Absicht an den Server schicken. Für alle anderen tut der Client
 	# nichts — der Server würfelt automatisch und schickt das Ergebnis.
 	if is_local:
-		while not _roll_requested and _running:
+		while not _roll_requested and _running and not _local_taken_over:
 			await get_tree().process_frame
-		transport.send_command(MatchProtocol.roll(local_player_id))
+		# Nur würfeln, wenn wirklich getippt wurde. Hat der Server in der
+		# Zwischenzeit übernommen (Timeout), hat er schon gewürfelt — dann
+		# nichts senden und die gestauten Übernahme-Events durchlaufen lassen.
+		if _roll_requested and not _local_taken_over:
+			transport.send_command(MatchProtocol.roll(local_player_id))
 	else:
 		await _wait(pace)
 
@@ -181,11 +195,14 @@ func _handle_minigame(evt: Dictionary) -> void:
 func _handle_minigame_result(evt: Dictionary) -> void:
 	var coins: Array = evt["coins"]
 	var stars: Array = evt["stars"]
+	var wins: Array = evt.get("wins", [])
 	for i in GameState.players.size():
 		if i < coins.size():
 			GameState.players[i].coins = coins[i]
 		if i < stars.size():
 			GameState.players[i].stars = stars[i]
+		if i < wins.size():
+			GameState.players[i].minigames_won = wins[i]
 	minigame_finished.emit(_entry_by_id(evt["mg"]), evt["scores"], evt["rewards"])
 
 

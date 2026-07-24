@@ -20,6 +20,11 @@ var server: MatchServer
 ## -1 = echte Systemuhr verwenden.
 var now_override: int = -1
 
+## Die ID des Spielers an diesem Gerät. Wird als authentifizierter Absender
+## an den Server durchgereicht — auf einem vertrauten Einzelgerät reicht das.
+## Leer = dem im Command behaupteten Absender vertrauen.
+var local_sender_id: String = ""
+
 
 func _init(p_server: MatchServer) -> void:
 	server = p_server
@@ -27,7 +32,7 @@ func _init(p_server: MatchServer) -> void:
 
 
 func send_command(cmd: Dictionary) -> void:
-	server.command(cmd, _now())
+	server.command(cmd, _now(), local_sender_id)
 
 
 func poll() -> void:

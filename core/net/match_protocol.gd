@@ -89,8 +89,12 @@ static func ev_match_started(seed: int, rounds: int, player_ids: Array) -> Dicti
 	return {"t": EV_MATCH_STARTED, "seed": seed, "rounds": rounds, "players": player_ids}
 
 
-static func ev_turn_started(player_index: int, round_index: int, deadline_ms: int) -> Dictionary:
-	return {"t": EV_TURN_STARTED, "player": player_index, "round": round_index, "deadline": deadline_ms}
+static func ev_turn_started(player_index: int, round_index: int, timeout_ms: int) -> Dictionary:
+	# timeout_ms ist eine DAUER, keine absolute Uhrzeit. Absolute Deadlines
+	# würden den Event-Strom an die Wanduhr binden und das Determinismus-
+	# Versprechen brechen (zwei Server mit gleichem Seed, aber anderer
+	# Startzeit lieferten verschiedene Events). Die Dauer ist konstant.
+	return {"t": EV_TURN_STARTED, "player": player_index, "round": round_index, "timeout": timeout_ms}
 
 
 static func ev_dice_rolled(player_index: int, value: int, auto: bool) -> Dictionary:
@@ -109,11 +113,22 @@ static func ev_field_resolved(player_index: int, message: String, coins: int, st
 	return {"t": EV_FIELD_RESOLVED, "player": player_index, "msg": message, "coins": coins, "stars": stars}
 
 
-static func ev_minigame_starting(entry: Dictionary, seed: int, deadline_ms: int) -> Dictionary:
-	return {"t": EV_MINIGAME_STARTING, "entry": entry, "seed": seed, "deadline": deadline_ms}
+static func ev_minigame_starting(entry: Dictionary, seed: int, timeout_ms: int) -> Dictionary:
+	# Eine frische, JSON-reine Kopie des Registry-Eintrags — niemals die
+	# Konstante selbst weiterreichen. Sonst teilen Event und Registry
+	# dieselbe Referenz, und eine Mutation auf Client-Seite würde die
+	# globale Registry auf allen Geräten verändern. StringName wird zu String.
+	var clean := {
+		"id": String(entry.get("id", "")),
+		"title": entry.get("title", ""),
+		"category": int(entry.get("category", 0)),
+		"scene": entry.get("scene", ""),
+	}
+	return {"t": EV_MINIGAME_STARTING, "entry": clean, "seed": seed, "timeout": timeout_ms}
 
 
-static func ev_minigame_result(entry_id: String, scores: Array, rewards: Array, coins: Array, stars: Array) -> Dictionary:
+static func ev_minigame_result(entry_id: String, scores: Array, rewards: Array,
+		coins: Array, stars: Array, wins: Array) -> Dictionary:
 	return {
 		"t": EV_MINIGAME_RESULT,
 		"mg": entry_id,
@@ -121,6 +136,7 @@ static func ev_minigame_result(entry_id: String, scores: Array, rewards: Array, 
 		"rewards": rewards,
 		"coins": coins,   # neue Gesamt-Münzstände je Spieler
 		"stars": stars,   # neue Gesamt-Sternstände je Spieler
+		"wins": wins,     # neue Gesamt-Minispielsiege je Spieler
 	}
 
 

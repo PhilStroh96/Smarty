@@ -88,6 +88,11 @@ func configure(player_defs: Array, p_seed: int, field_defs: Array, rounds: int =
 func start(now_ms: int) -> void:
 	if phase != Phase.LOBBY:
 		return
+	# Der autoritative Kern verlässt sich nicht auf den Aufrufer: ohne
+	# Spieler gäbe es sonst einen Out-of-bounds-Zugriff in _begin_turn.
+	if players.is_empty():
+		push_error("MatchServer.start ohne Spieler")
+		return
 	event.emit(MatchProtocol.ev_match_started(seed, total_rounds, _player_ids()))
 	current_round = 0
 	current_player = 0
@@ -99,14 +104,22 @@ func start(now_ms: int) -> void:
 # ---------------------------------------------------------------------------
 
 ## Verarbeitet einen Command eines Clients.
-func command(cmd: Dictionary, now_ms: int) -> void:
+##
+## [param sender] ist die [b]authentifizierte[/b] Absender-ID, die der
+## Transport liefert (bei Nakama die Presence-UserId). Ist sie gesetzt, gilt
+## sie — die im Command behauptete ID wird ignoriert. So kann niemand im
+## Namen eines anderen würfeln oder abgeben. Nur der [LocalTransport] auf
+## einem vertrauten Einzelgerät darf [param sender] leer lassen; dann wird
+## der behaupteten ID vertraut.
+func command(cmd: Dictionary, now_ms: int, sender: String = "") -> void:
+	var actor := sender if sender != "" else String(cmd.get("id", ""))
 	match MatchProtocol.type_of(cmd):
 		MatchProtocol.CMD_ROLL:
-			_on_roll(cmd, now_ms)
+			_on_roll(actor, now_ms)
 		MatchProtocol.CMD_SUBMIT:
-			_on_submit(cmd, now_ms)
+			_on_submit(actor, cmd, now_ms)
 		MatchProtocol.CMD_LEAVE:
-			_on_leave(cmd, now_ms)
+			_on_leave(actor, now_ms)
 
 
 ## Der Zeittakt. Treibt alles voran, was keine menschliche Eingabe braucht:
@@ -144,14 +157,17 @@ func _begin_turn(now_ms: int) -> void:
 		_deadline_ms = now_ms
 	else:
 		_deadline_ms = now_ms + TURN_TIMEOUT_MS
-	event.emit(MatchProtocol.ev_turn_started(current_player, current_round, _deadline_ms))
+	# Das Event trägt die Timeout-DAUER, nicht die absolute Deadline —
+	# damit bleibt der Event-Strom unabhängig von der Wanduhr.
+	event.emit(MatchProtocol.ev_turn_started(current_player, current_round, TURN_TIMEOUT_MS))
 
 
-func _on_roll(cmd: Dictionary, now_ms: int) -> void:
+func _on_roll(actor: String, now_ms: int) -> void:
 	if phase != Phase.AWAIT_ROLL:
 		return
-	# Nur der Spieler, der dran ist, darf würfeln.
-	if cmd.get("id", "") != String(players[current_player].id):
+	# Nur der Spieler, der dran ist, darf würfeln — geprüft gegen die
+	# authentifizierte Absender-ID, nicht gegen eine behauptete.
+	if actor != String(players[current_player].id):
 		event.emit(MatchProtocol.ev_error("Nicht am Zug"))
 		return
 	_do_roll(now_ms, false)
@@ -232,20 +248,23 @@ func _begin_minigame(now_ms: int) -> void:
 	_mg_have.clear()
 	_mg_scores.clear()
 	_deadline_ms = now_ms + MINIGAME_TIMEOUT_MS
-	event.emit(MatchProtocol.ev_minigame_starting(entry, _mg_seed, _deadline_ms))
+	event.emit(MatchProtocol.ev_minigame_starting(entry, _mg_seed, MINIGAME_TIMEOUT_MS))
 
 	# Sind gar keine anwesenden Menschen dabei, gibt es nichts abzuwarten.
 	if not _has_pending_humans():
 		_finalize_minigame(now_ms)
 
 
-func _on_submit(cmd: Dictionary, now_ms: int) -> void:
+func _on_submit(actor: String, cmd: Dictionary, now_ms: int) -> void:
 	if phase != Phase.MINIGAME:
 		return
 	if cmd.get("mg", "") != String(_mg_entry.get("id", "")):
 		return  # Abgabe für ein anderes Minispiel — verspätet, verwerfen.
 
-	var idx := _index_of(cmd.get("id", ""))
+	# Die Abgabe zählt für den authentifizierten Absender, nicht für die im
+	# Command genannte ID. Sonst könnte man eine leere Abgabe für ein Opfer
+	# schicken und dessen echte, gute Abgabe damit blockieren.
+	var idx := _index_of(actor)
 	if idx < 0 or _mg_have.get(idx, false):
 		return
 
@@ -290,12 +309,14 @@ func _finalize_minigame(now_ms: int) -> void:
 
 	var coins: Array[int] = []
 	var stars: Array[int] = []
+	var wins: Array[int] = []
 	for p in players:
 		coins.append(p.coins)
 		stars.append(p.stars)
+		wins.append(p.minigames_won)
 
 	event.emit(MatchProtocol.ev_minigame_result(
-		String(_mg_entry.get("id", "")), scores, rewards, coins, stars))
+		String(_mg_entry.get("id", "")), scores, rewards, coins, stars, wins))
 	_finish_round(now_ms)
 
 
@@ -314,17 +335,27 @@ func _finish_round(now_ms: int) -> void:
 # Verlassen
 # ---------------------------------------------------------------------------
 
-func _on_leave(cmd: Dictionary, now_ms: int) -> void:
-	var idx := _index_of(cmd.get("id", ""))
+func _on_leave(actor: String, now_ms: int) -> void:
+	# Vor dem Start oder nach dem Ende gibt es nichts zu verlassen — sonst
+	# feuerte der Server ein Streu-Event in einen Zustand, in dem der Client
+	# noch beendeten Spielerzustand ändern würde.
+	if phase == Phase.ENDED or phase == Phase.LOBBY:
+		return
+	var idx := _index_of(actor)
 	if idx < 0:
 		return
 	var p := players[idx]
 	if not p.taken_over_by_ai:
 		p.taken_over_by_ai = true
 		event.emit(MatchProtocol.ev_player_left(String(p.id), true))
+
 	# Verlässt der Spieler, der gerade dran ist, sofort für ihn ziehen.
 	if phase == Phase.AWAIT_ROLL and idx == current_player:
 		_do_roll(now_ms, true)
+	# Verlässt im Minispiel der letzte anwesende Mensch, sofort auswerten —
+	# sonst stockt die Partie bis zum Timeout, obwohl niemand mehr wartet.
+	elif phase == Phase.MINIGAME and not _has_pending_humans():
+		_finalize_minigame(now_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -346,18 +377,28 @@ static func simulate_score(mg_seed: int, round_index: int, player_index: int) ->
 	return maxi(0, correct * MinigameBase.CORRECT_POINTS + wrong * MinigameBase.WRONG_POINTS)
 
 
-## Plausibilitätsprüfung einer Abgabe (Zeiten). Reine Funktion.
+## Plausibilitätsprüfung einer Abgabe. Reine Funktion.
 ##
-## Keine Antwort darf schneller als die menschliche Reaktionszeit sein, keine
-## nach Ablauf des Timers, und die kumulierten Zeiten müssen monoton steigen.
+## Wehrt die Punktzahl-Inflation ab: Keine Antwort darf schneller als die
+## menschliche Reaktionszeit sein, keine nach Ablauf des Timers; zwischen
+## zwei Antworten muss mindestens eine Reaktionszeit liegen (sonst könnte
+## man tausende Antworten in Millisekundenschritten stapeln); und kein
+## Aufgabenindex darf doppelt vorkommen (jede Aufgabe wird genau einmal
+## beantwortet). Die eigentliche Punktdeckelung leistet zusätzlich
+## [method QuizMinigame.authoritative_score], das Duplikate ignoriert.
 static func validate_submission(subs: Array, max_duration_ms: int) -> bool:
 	var last := -1
+	var seen := {}
 	for s in subs:
 		var t: int = s.get("time_ms", -1)
+		var task: int = s.get("task", -1)
 		if t < MIN_HUMAN_REACTION_MS or t > max_duration_ms:
 			return false
-		if t <= last:
+		if t - last < MIN_HUMAN_REACTION_MS:
 			return false
+		if seen.has(task):
+			return false
+		seen[task] = true
 		last = t
 	return true
 
@@ -388,7 +429,11 @@ func _award_minigame(scores: Array[int]) -> Array[int]:
 		var pot := 0
 		for pl in range(place, tie_end + 1):
 			pot += MINIGAME_REWARDS[mini(pl, MINIGAME_REWARDS.size() - 1)]
-		var share := int(round(float(pot) / float(tie_end - place + 1)))
+		# Kaufmännische Rundung in reiner Integer-Arithmetik: (pot + n/2) / n.
+		# Bewusst nicht round(float): das würde bei einer Portierung nach Go
+		# oder JS (Banker's Rounding) andere Münzen vergeben.
+		var n := tie_end - place + 1
+		var share := (pot + n / 2) / n
 
 		for pl in range(place, tie_end + 1):
 			var pi := order[pl]
@@ -433,7 +478,12 @@ func _standings() -> Array:
 	sorted.sort_custom(func(a: PlayerInfo, b: PlayerInfo) -> bool:
 		if a.stars != b.stars:
 			return a.stars > b.stars
-		return a.coins > b.coins
+		if a.coins != b.coins:
+			return a.coins > b.coins
+		# Stabiler Tie-Break über die ID: sonst wäre die Reihenfolge bei
+		# vollständigem Gleichstand unbestimmt und ein portierter Server
+		# lieferte ein anderes Endergebnis.
+		return String(a.id) < String(b.id)
 	)
 	var out: Array = []
 	for p in sorted:
