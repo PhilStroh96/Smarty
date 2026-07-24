@@ -83,14 +83,14 @@ func _build_ui() -> void:
 		+ "Weicht er ab, ist der Netcode-Ansatz gebrochen.", true))
 
 	vbox.add_child(_spacer())
-	var start := Button.new()
-	start.text = "Partie starten"
-	start.custom_minimum_size = Vector2(0, 96)
-	start.add_theme_font_size_override("font_size", 36)
-	start.pressed.connect(func() -> void:
-		get_tree().change_scene_to_file("res://board/board_scene.tscn")
+	var back := Button.new()
+	back.text = "Zurück zum Menü"
+	back.custom_minimum_size = Vector2(0, 96)
+	back.add_theme_font_size_override("font_size", 36)
+	back.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://ui/main_menu.tscn")
 	)
-	vbox.add_child(start)
+	vbox.add_child(back)
 
 
 ## Prüft die Eigenschaften, auf denen der Netcode aufbaut.

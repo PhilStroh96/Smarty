@@ -85,8 +85,12 @@ static func ev_lobby(code: String, players: Array, host_id: String, started: boo
 	return {"t": EV_LOBBY, "code": code, "players": players, "host": host_id, "started": started}
 
 
-static func ev_match_started(seed: int, rounds: int, player_ids: Array) -> Dictionary:
-	return {"t": EV_MATCH_STARTED, "seed": seed, "rounds": rounds, "players": player_ids}
+## [param players]: je Eintrag { "id": String, "name": String } — in der
+## Reihenfolge, in der der Server konfiguriert wurde. Ein Gast baut daraus
+## seinen Spielerspiegel auf, ohne die Presence-Liste getrennt abgleichen
+## zu müssen.
+static func ev_match_started(seed: int, rounds: int, players: Array) -> Dictionary:
+	return {"t": EV_MATCH_STARTED, "seed": seed, "rounds": rounds, "players": players}
 
 
 static func ev_turn_started(player_index: int, round_index: int, timeout_ms: int) -> Dictionary:

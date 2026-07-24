@@ -18,8 +18,12 @@ extends RefCounted
 ## [b]Host-Migration[/b] (Host verlässt mitten in der Partie) ist bewusst noch
 ## nicht gelöst — für Tests unter Freunden verkraftbar, siehe docs/netcode.md.
 
+## Der Lobby-Stand hat sich geändert (Beitritt, Verlassen).
+signal lobby_updated(host_id: String, members: Array)
+
 var server: MatchServer
 var endpoint: RelayEndpoint
+var members: Array = []
 
 ## Im Test auf einen festen Wert setzen, um die Zeit zu steuern.
 var now_override: int = -1
@@ -83,6 +87,9 @@ func _on_relay_msg(msg: Dictionary) -> void:
 			# "from" ist die authentifizierte Absender-ID vom Relay.
 			server.command(msg.get("cmd", {}), _now(), msg.get("from", ""))
 			pump()
+		RelayProtocol.WELCOME, RelayProtocol.PRESENCE:
+			members = msg.get("members", [])
+			lobby_updated.emit(msg.get("host", ""), members)
 
 
 func _now() -> int:

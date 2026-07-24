@@ -34,9 +34,34 @@ var vibration: bool = true
 ## Leer = Systemsprache verwenden.
 var language: String = ""
 
+## Anzeigename in der Lobby.
+var player_name: String = "Spieler"
+
+## Stabile, anonyme Spieler-ID (kein Klarname, keine Kontodaten — Datensparsam-
+## keit, PLAN.md §5.2). Wird einmalig erzeugt und behalten.
+var player_id: String = ""
+
+## URL des Relay-Workers (Cloudflare). Leer, bis der Worker deployt ist —
+## siehe server/relay-worker/README.md. Dann z. B. wss://…workers.dev
+var relay_url: String = ""
+
 
 func _ready() -> void:
 	load_settings()
+	_ensure_player_id()
+
+
+## Erzeugt einmalig eine anonyme Spieler-ID, falls noch keine da ist.
+func _ensure_player_id() -> void:
+	if player_id == "":
+		# Anonym und stabil: Zufallsanteil plus Zeitstempel. Keine Geräte-
+		# kennung, kein Klarname — Datensparsamkeit (PLAN.md §5.2).
+		var rng := SeededRng.new(int(Time.get_unix_time_from_system()) ^ (randi() << 8))
+		var alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+		var out := "u_"
+		for i in 12:
+			out += alphabet[rng.next_int(0, alphabet.length() - 1)]
+		player_id = out
 
 
 func load_settings() -> void:
@@ -50,6 +75,10 @@ func load_settings() -> void:
 	text_scale = cfg.get_value("a11y", "text_scale", text_scale)
 	vibration = cfg.get_value("input", "vibration", vibration)
 	language = cfg.get_value("locale", "language", language)
+	player_name = cfg.get_value("player", "name", player_name)
+	player_id = cfg.get_value("player", "id", player_id)
+	relay_url = cfg.get_value("net", "relay_url", relay_url)
+	_ensure_player_id()
 	_apply()
 
 
@@ -62,6 +91,9 @@ func save_settings() -> void:
 	cfg.set_value("a11y", "text_scale", text_scale)
 	cfg.set_value("input", "vibration", vibration)
 	cfg.set_value("locale", "language", language)
+	cfg.set_value("player", "name", player_name)
+	cfg.set_value("player", "id", player_id)
+	cfg.set_value("net", "relay_url", relay_url)
 	cfg.save(SAVE_PATH)
 	_apply()
 	changed.emit()

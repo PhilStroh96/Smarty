@@ -93,7 +93,7 @@ func start(now_ms: int) -> void:
 	if players.is_empty():
 		push_error("MatchServer.start ohne Spieler")
 		return
-	event.emit(MatchProtocol.ev_match_started(seed, total_rounds, _player_ids()))
+	event.emit(MatchProtocol.ev_match_started(seed, total_rounds, _player_infos()))
 	current_round = 0
 	current_player = 0
 	_begin_turn(now_ms)
@@ -466,10 +466,10 @@ func _index_of(id: String) -> int:
 	return -1
 
 
-func _player_ids() -> Array:
+func _player_infos() -> Array:
 	var out: Array = []
 	for p in players:
-		out.append(String(p.id))
+		out.append({"id": String(p.id), "name": p.display_name})
 	return out
 
 

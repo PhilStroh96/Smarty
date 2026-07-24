@@ -1,14 +1,19 @@
 extends Node2D
 
-## Die Brettphase — setzt Karte, Figuren, Kamera, HUD und Rundenlogik
-## zusammen und spielt eine Partie durch.
+## Die Brettphase — für lokale und Online-Partien gleichermaßen.
 ##
-## Alles wird per Code aufgebaut statt in einer .tscn verdrahtet. Solange
-## das hier Platzhalter sind, wäre eine Szenendatei nur eine zweite Stelle,
-## an der dieselbe Struktur gepflegt werden muss.
+## Woher Server und Transport kommen, entscheidet [MatchSetup]:
+## [br]• [b]Nichts gesetzt[/b] (Direktstart/Debug): baut eine lokale Solo-Partie
+##   gegen KI selbst auf.
+## [br]• [b]Kontext gesetzt[/b] (Menü/Lobby/Session): nutzt den übergebenen
+##   Transport und ggf. einen vorbereiteten Client. [GameState] ist dann schon
+##   befüllt.
+##
+## Der Client bleibt derselbe [MatchClient] wie eh und je — er ist
+## transport-blind, also läuft die Szene über [LocalTransport] (offline/Host)
+## und [RelayTransport] (Gast) ohne Unterschied.
 
 const ROUNDS := 12
-const HUMAN_PLAYERS := 1
 const TOTAL_PLAYERS := 4
 const LOCAL_ID := &"p0"
 
@@ -16,57 +21,66 @@ var _board: BoardMap
 var _hud: BoardHud
 var _camera: BoardCamera
 var _client: MatchClient
-var _server: MatchServer
-var _transport: LocalTransport
 var _minigame_layer: CanvasLayer
 var _pawns: Array[Pawn] = []
 
+# --- Kontext ---
+var _transport: NetTransport
+var _local_id: StringName = LOCAL_ID
+var _teardown: Callable = Callable()
+var _own_transport := false   # nur lokal gebaute Transporte selbst schließen
+
 
 func _ready() -> void:
-	_setup_players()
+	_resolve_context()
 	_build_world()
 	_connect_signals()
 	_client.begin()
 
 
 func _exit_tree() -> void:
-	# Den Server-Transport-Zyklus lösen, sonst bleibt eine ganze Partie
-	# (Server, Transport, Client) nach dem Verlassen im Speicher.
-	if _transport != null:
+	# Session-Ressourcen (Server, Brücke, Verbindungen) sauber schließen.
+	if _teardown.is_valid():
+		_teardown.call()
+	elif _own_transport and _transport != null:
 		_transport.close()
 
 
-func _setup_players() -> void:
+## Holt den Partie-Kontext aus [MatchSetup] oder baut eine lokale Partie.
+func _resolve_context() -> void:
+	if MatchSetup.is_set():
+		_transport = MatchSetup.transport
+		_local_id = MatchSetup.local_id
+		_teardown = MatchSetup.teardown
+		_client = MatchSetup.client   # kann null sein (Host/lokal bauen selbst)
+		MatchSetup.clear()
+	else:
+		_build_local_context()
+
+
+## Baut eine lokale Solo-Partie gegen KI — der Fall ohne Menü.
+func _build_local_context() -> void:
 	var names := ["Du", "Bot Anna", "Bot Ben", "Bot Cem"]
-	var player_defs: Array = []
+	var defs: Array = []
 	var mirror: Array[PlayerInfo] = []
 	for i in TOTAL_PLAYERS:
-		var is_ai := i >= HUMAN_PLAYERS
-		player_defs.append({
-			"id": "p%d" % i,
-			"name": names[i],
-			"char": "pawn%d" % i,
-			"ai": is_ai,
-		})
-		# Der Client-Spiegel: dieselben Spieler als eigene Objekte. Der
-		# Server bekommt seine eigene Kopie (in configure), damit Client
-		# und Server nie dieselben Instanzen teilen.
+		var is_ai := i > 0
+		defs.append({"id": "p%d" % i, "name": names[i], "char": "pawn%d" % i, "ai": is_ai})
 		var p := PlayerInfo.new(StringName("p%d" % i), names[i])
 		p.is_ai = is_ai
 		p.character_id = StringName("pawn%d" % i)
 		mirror.append(p)
 
-	# Zufälliger Match-Seed. In der Online-Partie gibt ihn später der
-	# Server vor — hier reicht die Uhrzeit.
 	var seed := int(Time.get_unix_time_from_system())
 	GameState.start_match(GameState.Mode.LOCAL, mirror, seed, ROUNDS)
 
-	# Der autoritative Server im selben Prozess (LocalTransport).
-	_server = MatchServer.new()
-	_server.configure(player_defs, seed, TestMap.build_fields(), ROUNDS)
-	_transport = LocalTransport.new(_server)
-	# Alle Eingaben an diesem Gerät gelten als der lokale Spieler.
-	_transport.local_sender_id = String(LOCAL_ID)
+	var server := MatchServer.new()
+	server.configure(defs, seed, TestMap.build_fields(), ROUNDS)
+	var transport := LocalTransport.new(server)
+	transport.local_sender_id = String(LOCAL_ID)
+	_transport = transport
+	_local_id = LOCAL_ID
+	_own_transport = true
 
 
 func _build_world() -> void:
@@ -83,9 +97,8 @@ func _build_world() -> void:
 	add_child(_board)
 	_board.build(TestMap.build_fields())
 
-	# Figuren als Kinder der Karte, damit sie in dieselbe Y-Sortierung
-	# fallen wie die Felder.
-	for i in TOTAL_PLAYERS:
+	# Figuren als Kinder der Karte, damit sie in dieselbe Y-Sortierung fallen.
+	for i in GameState.players.size():
 		var pawn := Pawn.new()
 		_board.add_child(pawn)
 		pawn.setup(i, _board, 0)
@@ -93,22 +106,26 @@ func _build_world() -> void:
 
 	_camera = BoardCamera.new()
 	add_child(_camera)
-	# Die Testkarte passt komplett auf den Bildschirm — das ganze Feld zu
-	# zeigen ist hier informativer, als einer Figur hinterherzufahren.
 	_camera.frame_board.call_deferred(_board)
 
 	_hud = BoardHud.new()
 	add_child(_hud)
 
-	# Eigene Ebene über dem Brett: Das Minispiel legt sich formatfüllend
-	# darüber und darf das Brett-HUD nicht durchscheinen lassen.
 	_minigame_layer = CanvasLayer.new()
 	_minigame_layer.layer = 20
 	add_child(_minigame_layer)
 
-	_client = MatchClient.new()
-	add_child(_client)
-	_client.setup(_transport, _board, _pawns, LOCAL_ID)
+	# Ein vorbereiteter Client (Gast) hört schon am Transport und hat Events
+	# gepuffert — ihm nur noch Brett und Figuren geben. Sonst selbst bauen.
+	if _client != null:
+		_client.board = _board
+		_client.pawns = _pawns
+		if _client.get_parent() == null:
+			add_child(_client)
+	else:
+		_client = MatchClient.new()
+		add_child(_client)
+		_client.setup(_transport, _board, _pawns, _local_id)
 	_client.minigame_runner = _run_minigame
 
 
@@ -126,10 +143,7 @@ func _connect_signals() -> void:
 
 
 ## Spielt ein Minispiel für den lokalen Spieler und liefert das rohe Ergebnis.
-##
-## Der Client schickt daraus nur die Antworten an den Server — die Punkte
-## rechnet der Server selbst nach. Der Rückgabewert ist deshalb das ganze
-## [MinigameResult] (mit den Einzelantworten), nicht eine Punktzahl.
+## Der Client schickt daraus nur die Antworten an den Server.
 func _run_minigame(entry: Dictionary, seed: int) -> MinigameResult:
 	var runner := MinigameRunner.new()
 	_minigame_layer.add_child(runner)
