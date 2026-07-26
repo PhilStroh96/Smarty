@@ -83,19 +83,27 @@ func _build_local_context() -> void:
 	_own_transport = true
 
 
+const BOARD_SHADOW := preload("res://assets/art/fx/board_shadow.png")
+
+
 func _build_world() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color("#161a2e")
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var bg_layer := CanvasLayer.new()
-	bg_layer.layer = -10
-	bg_layer.add_child(bg)
-	add_child(bg_layer)
+	_build_background()
+
+	# Weicher Schatten unter dem Brett — als Node2D-Geschwister VOR dem Brett
+	# eingefügt, damit er dahinter liegt. Position/Skala nach dem Bau, s.u.
+	var shadow := Sprite2D.new()
+	shadow.texture = BOARD_SHADOW
+	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(shadow)
 
 	_board = BoardMap.new()
 	add_child(_board)
 	_board.build(TestMap.build_fields())
+
+	# Schatten auf die Brettfläche legen (Prisma-Bühnenerdung).
+	var bounds := _board.world_bounds()
+	shadow.position = bounds.get_center() + Vector2(0, bounds.size.y * 0.14)
+	shadow.scale = Vector2(bounds.size.x / 512.0 * 1.35, bounds.size.y / 288.0 * 1.5)
 
 	# Figuren als Kinder der Karte, damit sie in dieselbe Y-Sortierung fallen.
 	for i in GameState.players.size():
@@ -140,6 +148,32 @@ func _connect_signals() -> void:
 		_hud.show_minigame_result(rewards)
 	)
 	_client.match_finished.connect(_hud.show_result)
+
+
+## Radialer Verlauf als Hintergrund (Prisma-Bühnenlicht auf das Brett).
+func _build_background() -> void:
+	var grad := Gradient.new()
+	grad.set_color(0, Color("#242A54"))
+	grad.set_color(1, Color("#101228"))
+
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.46)
+	tex.fill_to = Vector2(1.02, 1.02)
+	tex.width = 512
+	tex.height = 512
+
+	var bg := TextureRect.new()
+	bg.texture = tex
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var bg_layer := CanvasLayer.new()
+	bg_layer.layer = -10
+	bg_layer.add_child(bg)
+	add_child(bg_layer)
 
 
 ## Spielt ein Minispiel für den lokalen Spieler und liefert das rohe Ergebnis.

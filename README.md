@@ -176,10 +176,11 @@ sie auch *lesen* kann — Kontrast, Größen, Überlappungen, abgeschnittene
 Formen — sieht man nur im Bild. Die Screenshots landen unter
 `%APPDATA%\Godot\app_userdata\Mobile Smarty\shots`.
 
-Platzhalter-Grafiken neu erzeugen:
+Prisma-Grafiken (Flat-Vektor, siehe [docs/art-bible.md](docs/art-bible.md))
+neu erzeugen:
 
 ```bash
-python tools/gen_placeholder_art.py
+python tools/gen_prisma_art.py
 ```
 
 ## Determinismus prüfen

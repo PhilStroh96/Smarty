@@ -13,8 +13,10 @@ signal roll_pressed
 ## Zeitdruck-Elementen eher großzügiger.
 const TOUCH_MIN := 96
 
+# Exakt die Figurenfarben (Prisma, docs/art-bible.md), damit "Du" im HUD
+# dieselbe Farbe hat wie die eigene Figur auf dem Brett.
 const PLAYER_COLORS := [
-	Color("#ef4444"), Color("#3b82f6"), Color("#facc15"), Color("#22c55e"),
+	Color("#ff4d5e"), Color("#2e9bff"), Color("#ffc93c"), Color("#1fb36b"),
 ]
 
 var _round_label: Label
